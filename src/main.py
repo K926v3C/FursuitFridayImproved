@@ -1,242 +1,171 @@
 import os
-import shutil
 import sys
-import urllib.error
-from collections import deque
-from urllib.request import urlretrieve
+from concurrent.futures import ThreadPoolExecutor
+from typing import TYPE_CHECKING
+from urllib.request import urlopen
 
-from PySide6.QtCore import Slot
+from PySide6.QtCore import QThread, Slot
 from PySide6.QtGui import QPixmap
-from PySide6.QtWidgets import (QApplication, QDialog, QFileDialog, QMainWindow,
+from PySide6.QtWidgets import (QApplication, QFileDialog, QMainWindow,
                                QMessageBox)
 
-from core_utilities import interface
-from UI.dialog_about import Ui_Dialog
-from UI.dialog_user_input import Ui_Dialog as Ui_URL
-from UI.framework import Ui_MainWindow
+from core_utilities import ImageResourceHandler
+from UI import AboutDialog, InputDialog
+from UI.skeleton_forms import skeleton_MainForm
+
+if TYPE_CHECKING:
+    from http.client import HTTPResponse
+
+    from PySide6.QtWidgets import QCheckBox, QLabel
+
+    from core_utilities import Image
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
-        # 设置UI与子窗口
+    def __init__(self) -> 'None':
+        # Set up the main form and auxiliary windows
         super(MainWindow, self).__init__()
-        self.ui = Ui_MainWindow()
-        self.ui.setupUi(self)
-        self.setWindowTitle('FursuitFriday Improved')
-        self.messagebox = QMessageBox()
-        self.about = About()
-        self.about.setWindowTitle('关于')
+        self.wc = skeleton_MainForm()
+        self.wc.setupUi(self)  # type: ignore
+        self.about_dialog = AboutDialog(self)
+        self.input_dialog = InputDialog(self)
+        self.message_box = QMessageBox(self)
 
-        # 绑定信号
-        self.ui.next_button.clicked.connect(self.load_image)
-        self.ui.prev_button.clicked.connect(self.prev)
-        self.ui.action_about.triggered.connect(self.raise_about)
-        self.ui.action_change_folder.triggered.connect(self.open_file_dialog)
-        self.ui.action_download.triggered.connect(self.ui_download)
-        self.ui.action_exit_app.triggered.connect(self.close)
-        self.ui.action_URL.triggered.connect(self.raise_url_change_dialog)
-        self.ui.action_select_all.triggered.connect(self.select_all_images)
-        self.ui.action_Search.triggered.connect(self.search_service_helper)
+        # Bond slots with signals
+        self.wc.prev_button.clicked.connect(self.to_previous_page)
+        self.wc.next_button.clicked.connect(self.to_next_page)
+        self.wc.action_select_all.triggered.connect(self.select_all_images)
+        self.wc.action_change_folder.triggered.connect(self.change_download_folder)
+        self.wc.action_download.triggered.connect(self.download_selected_images)
+        self.wc.action_about.triggered.connect(self.display_about_dialog)
+        self.wc.action_change_topic.triggered.connect(self.change_topic)
+        self.wc.action_filter_by_user.triggered.connect(self.developing_function)
 
-        # 其余初始化操作
-        self.names_without_ext = self.names = self.data = self.up = self.low = None
-        self.save_path = os.getcwd()
-        self.total_count = 0
-        self.load_image()
-        self.ui.prev_button.setEnabled(False)
+        # Data initializaion
+        self.curr_page_num: 'int' = 1
+        self.download_location: 'str' = os.path.join(os.getcwd(), 'images')
+        self.download_QThread: 'QThread' = QThread(self)
+        self.thread_pool: 'ThreadPoolExecutor' = ThreadPoolExecutor(8)
+        self.img_handler: 'ImageResourceHandler' = ImageResourceHandler('9064')
+        self.handler_idx: 'int' = 0
+        self.initialize_page()
 
-        """
-        names保存了后端整理后的文件名 用于下载器保存;names_without_ext和names相同 但不带扩展名 用于标题的展示
-        self.data保存了整理后图片的url等信息
-        self.total_count,self.up对应当前的图片数量,下一次应该加载的数量
-        """
+    def __del__(self) -> 'None':
+        self.thread_pool.shutdown()
 
-    @Slot()  # 加载图像
-    def load_image(self):
-        global global_URL, changeURL, search_status, keyword
-        # 在用户点击下一页后启用上一页按钮
-        if not self.ui.prev_button.isEnabled():
-            self.ui.prev_button.setEnabled(True)
-        # 预先声明topic_id避免unbounded error
-        topic_id = ""
-        # 判断是否存在新的url 是否请求切换地址
-        if global_URL and changeURL:
-            # 检查是否为bilibili动态链接
-            if "t.bilibili.com" in global_URL:
-                if not global_URL.endswith("/"):
-                    global_URL += "/"
-                # 提取topic_id
-                topic_id = global_URL[global_URL.find("topic") + len("topic") + 1: -1]
-                # 刷新缓存的变量
-                if os.path.exists("temp"):
-                    shutil.rmtree("temp")
-                self.names_without_ext = self.names = self.data = None
-                self.total_count = 0
-                # 操作完毕后将请求状态切换为否
-                changeURL = False
-                keyword = ""
-                self.ui.prev_button.setEnabled(False)
-        if keyword and search_status:
-            if os.path.exists("temp"):
-                shutil.rmtree("temp")
-            self.names_without_ext = self.names = self.data = None
-            self.total_count = 0
-            search_status = False
-            self.ui.prev_button.setEnabled(False)
-        self.up = self.total_count + 9
-        if not keyword:
-            try:
-                thumbnails, self.data, self.names_without_ext, self.names = interface(self.up, topic_id)
-            except ConnectionError:
-                self.raise_message("网络未连接")
-                sys.exit(app.exit())
-        else:
-            try:
-                thumbnails, self.data, self.names_without_ext, self.names = interface(self.up, search_content=keyword)
-            except ConnectionError:
-                self.raise_message("网络未连接")
-                sys.exit(app.exit())
-        if not os.path.exists("temp"):
-            os.mkdir("temp")
-        current_thumbnail = []
-        for member in thumbnails:
-            for thumbnail in member["images"]:
-                current_thumbnail.append(thumbnail)
+    def initialize_page(self):
+        self.download_QThread.moveToThread
+        self.ensure_img_sufficient()
+        self.load_images(self.img_handler[self.handler_idx:self.handler_idx + 9])
+        self.wc.prev_button.setEnabled(False)
+        self.wc.next_button.setEnabled(True)
+        # whether it is the last page
+        if not self.img_handler.has_more and not len(self.img_handler) > self.handler_idx + 9:
+            self.wc.next_button.setEnabled(False)
+        self.display_page_num()
 
-        current_thumbnail = current_thumbnail[self.total_count:]
+    def ensure_img_sufficient(self) -> 'None':
+        while len(self.img_handler) - self.handler_idx < 9:
+            if self.img_handler.has_more:
+                self.img_handler.fetch_data()
+                # TODO: diaplay the loading dialog
+            else:
+                break
 
-        # print(self.total_count, self.up, current_thumbnail)
-        index = 0
-        for item in current_thumbnail:
-            index += 1
-            file_name = os.path.join(os.path.abspath("temp"), str(self.total_count + 1) + ".webp")
-            if not os.path.exists(file_name):
-                urlretrieve(item, file_name)
-            # print(file_name)
-            self.ui.__dict__[f'label_{index}'].setPixmap(QPixmap(file_name))
-            self.ui.__dict__[f'checkBox_{index}'].setChecked(False)
-            self.ui.__dict__[f'checkBox_{index}'].setText(self.names_without_ext[self.total_count])
-            self.total_count += 1
-        self.show()
+    def load_images(self, img_list: 'list[Image]') -> 'None':
+        for i in range(9):
+            label: 'QLabel' = getattr(self.wc, f'label_{i + 1}')
+            check_box: 'QCheckBox' = getattr(self.wc, f'checkBox_{i + 1}')
+            label.setPixmap(QPixmap(img_list[i].thumb_file_path if i < len(img_list) else ''))
+            check_box.setChecked(False)
+            check_box.setText(f'{img_list[i].user} - {img_list[i].posted_on}' if i < len(img_list) else '')
+
+    def display_page_num(self) -> 'None':
+        self.wc.page_indicator.setText(f'第{self.curr_page_num}页')
 
     @Slot()
-    def prev(self):
-        self.total_count -= 9
-        if self.total_count - 9 == 0:
-            self.ui.prev_button.setEnabled(False)
-        index = 0
-        # print(self.total_count)
-        locale_low = self.total_count - 8
-        locale_up = self.total_count + 1
-        for item in range(locale_low, locale_up):
-            index += 1
-            # print(item)
-            file_name = os.path.join(os.path.abspath("temp"), str(item) + ".webp")
-            self.ui.__dict__[f'label_{index}'].setPixmap(QPixmap(file_name))
-            self.ui.__dict__[f'checkBox_{index}'].setChecked(False)
-            self.ui.__dict__[f'checkBox_{index}'].setText(self.names_without_ext[locale_low - 1])
-            locale_low += 1
+    def to_previous_page(self) -> 'None':
+        self.handler_idx -= 9
+        self.load_images(self.img_handler[self.handler_idx:self.handler_idx + 9])
+
+        self.wc.next_button.setEnabled(True)
+        self.curr_page_num -= 1
+        # whether it is the first page
+        if self.curr_page_num == 1:
+            self.wc.prev_button.setEnabled(False)
+        self.display_page_num()
 
     @Slot()
-    def ui_download(self):
-        requires = deque()
-        count = 0
-        self.low = self.total_count - 9
-        for index in range(1, 10):
-            if self.ui.__dict__[f'checkBox_{index}'].isChecked():
-                requires.append(self.low + index)
-        # print(requires)
-        if requires:
-            self.raise_message("已经开始下载,请自行检查文件夹\n" + self.save_path)
-        for item in self.data:
-            images = item["images"]
-            temporal_count = count
-            count += len(images)
-            while requires:
-                photo_index = requires.popleft()
-                if count >= photo_index:
-                    # print(self.total_count)
-                    target = images[photo_index - temporal_count - 1]
-                    try:
-                        urlretrieve(target, os.path.join(self.save_path, self.names[photo_index - 1]))
-                    except urllib.error.URLError:
-                        self.raise_message("网络未连接")
-                else:
-                    break
+    def to_next_page(self) -> 'None':
+        self.handler_idx += 9
+        self.ensure_img_sufficient()
+        self.load_images(self.img_handler[self.handler_idx:self.handler_idx + 9])
 
-    @Slot()
-    def open_file_dialog(self):
-        self.save_path = QFileDialog.getExistingDirectory(self, "", os.getcwd())
+        # whether it is the last page
+        if not self.img_handler.has_more and not len(self.img_handler) > self.handler_idx + 9:
+            self.wc.next_button.setEnabled(False)
+        self.wc.prev_button.setEnabled(True)
+        self.curr_page_num += 1
+        self.display_page_num()
 
     @Slot()
     def select_all_images(self):
-        for index in range(1, 10):
-            self.ui.__dict__[f'checkBox_{index}'].setChecked(True)
+        for i in range(9):
+            check_box: 'QCheckBox' = getattr(self.wc, f'checkBox_{i + 1}')
+            check_box.setChecked(True)
+
+    def _dowload_image(self, img_url: 'str', file_name_with_dir: 'str') -> 'None':
+        response: 'HTTPResponse' = urlopen(img_url)
+        with open(file_name_with_dir, 'wb') as img_file:
+            img_file.write(response.read())
+        response.close()
 
     @Slot()
-    def search_service_helper(self):
-        dialog = URLDialog()
-        dialog.setWindowTitle("搜索")
-        dialog.ui.label.setText("请输入要搜索的up主")
-        dialog.ui.buttonBox.accepted.connect(dialog.get_keyword)
-        dialog.ui.buttonBox.accepted.connect(self.load_image)
-        dialog.exec()
-        dialog.show()
+    def change_download_folder(self):
+        self.download_location = QFileDialog.getExistingDirectory(self, '选择下载文件夹', os.getcwd())
 
     @Slot()
-    def raise_about(self):
-        self.about.show()
+    def download_selected_images(self):
+        img_list: 'list[Image]' = []
+        for i in range(9):
+            check_box: 'QCheckBox' = getattr(self.wc, f'checkBox_{i + 1}')
+            if check_box.isChecked():
+                img_list.append(self.img_handler[self.handler_idx + i])
+                check_box.setChecked(False)
+
+        if img_list and not os.path.exists(self.download_location):
+            os.mkdir(self.download_location)
+
+        for img in img_list:
+            file_path: 'str' = os.path.join(
+                self.download_location,
+                f'{img.user}_{img.posted_on.replace(":", "-").replace(" ", "_")}_{img.img_src[img.img_src.rfind(".") - 7:]}'
+            )
+            self.thread_pool.submit(self._dowload_image, img.img_src, file_path)
+
+        self.message_box.information(self, '下载完成', f'所选图片已下载至文件夹：\n{self.download_location}')
 
     @Slot()
-    def raise_message(self, message):
-        self.messagebox.information(self, "", message)
+    def display_about_dialog(self):
+        self.about_dialog.show()
 
     @Slot()
-    def raise_url_change_dialog(self):
-        global global_URL
-        dialog = URLDialog()
-        dialog.setWindowTitle("更改URL")
-        # 绑定信号 获取输入的内容并请求切换
-        dialog.ui.buttonBox.accepted.connect(dialog.get_url)
-        dialog.ui.buttonBox.accepted.connect(self.load_image)
-        dialog.show()
-        dialog.exec()
-
-
-class About(QDialog):
-    def __init__(self):
-        super(About, self).__init__()
-        self.ui = Ui_Dialog()
-        self.ui.setupUi(self)
-
-
-class URLDialog(QDialog):
-    def __init__(self):
-        super(URLDialog, self).__init__()
-        self.ui = Ui_URL()
-        self.ui.setupUi(self)
-        self.ui.label.setText("请输入要载入的URL")
+    def change_topic(self) -> 'None':
+        if (topic_id := self.input_dialog.get_user_input('更改话题', '请输入话题ID：')) is None:
+            return
+        if not topic_id.isdigit():
+            self.message_box.critical(self, '无效的话题ID', '请输入正确的话题ID！')
+        else:
+            self.img_handler = ImageResourceHandler(topic_id)
+            self.initialize_page()
 
     @Slot()
-    def get_url(self):
-        global global_URL, changeURL
-        global_URL = self.ui.lineEdit.text()
-        changeURL = True
-
-    @Slot()
-    def get_keyword(self):
-        global keyword, search_status
-        keyword = self.ui.lineEdit.text()
-        search_status = True
+    def developing_function(self):
+        self.message_box.information(self, '尚在开发的功能', '该功能正在开发中……')
 
 
 if __name__ == "__main__":
-    global_URL = ""
-    keyword = ""
-    changeURL = search_status = False
     app = QApplication(sys.argv)
-    window = MainWindow()
+    main_form = MainWindow()
+    main_form.show()
     app.exec()
-    if os.path.exists("temp"):
-        shutil.rmtree("temp")
-    sys.exit()

@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 
 ################################################################################
-## Form generated from reading UI file 'dialog.ui'
+## Form generated from reading UI file 'about_dialog.ui'
 ##
-## Created by: Qt User Interface Compiler version 6.3.0
+## Created by: Qt User Interface Compiler version 6.4.2
 ##
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
@@ -17,7 +17,7 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QPalette, QPixmap, QRadialGradient, QTransform)
 from PySide6.QtWidgets import (QApplication, QDialog, QHBoxLayout, QLabel,
     QSizePolicy, QVBoxLayout, QWidget)
-from . import encrypted_images_rc
+from . import author_img_enc_rc
 
 class Ui_Dialog(object):
     def setupUi(self, Dialog):
@@ -44,6 +44,7 @@ class Ui_Dialog(object):
         self.label.setMaximumSize(QSize(205, 274))
         self.label.setStyleSheet(u"background-image: url(:/images/About_Background.PNG);")
         self.label.setScaledContents(True)
+        self.label.setAlignment(Qt.AlignCenter)
 
         self.horizontalLayout.addWidget(self.label)
 
@@ -86,8 +87,7 @@ class Ui_Dialog(object):
     # setupUi
 
     def retranslateUi(self, Dialog):
-        Dialog.setWindowTitle(QCoreApplication.translate("Dialog", u"Dialog", None))
-        self.label.setText("")
+        Dialog.setWindowTitle(QCoreApplication.translate("Dialog", u"\u5173\u4e8e", None))
         self.label_2.setText(QCoreApplication.translate("Dialog", u"<html><head/><body><p align=\"center\">\u71a0\u4e91</p><p align=\"center\">\u7a0b\u5e8f</p><p align=\"center\">Copyright \u00a9 2021-2022</p></body></html>", None))
         self.label_3.setText(QCoreApplication.translate("Dialog", u"<html><head/><body><p align=\"center\">\u7d2b\u67ab</p><p align=\"center\">\u7f8e\u5de5(\u786e\u4fe1)</p><p align=\"center\">Copyright \u00a9 Bat Studio 2019-2022</p></body></html>", None))
     # retranslateUi

@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 
 ################################################################################
-## Form generated from reading UI file 'dialog_URL.ui'
+## Form generated from reading UI file 'user_input_dialog.ui'
 ##
-## Created by: Qt User Interface Compiler version 6.3.0
+## Created by: Qt User Interface Compiler version 6.4.2
 ##
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
@@ -23,8 +23,9 @@ class Ui_Dialog(object):
     def setupUi(self, Dialog):
         if not Dialog.objectName():
             Dialog.setObjectName(u"Dialog")
+        Dialog.setWindowModality(Qt.WindowModal)
         Dialog.resize(329, 90)
-        sizePolicy = QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        sizePolicy = QSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(Dialog.sizePolicy().hasHeightForWidth())
@@ -33,43 +34,30 @@ class Ui_Dialog(object):
         self.verticalLayout.setObjectName(u"verticalLayout")
         self.label = QLabel(Dialog)
         self.label.setObjectName(u"label")
-        sizePolicy1 = QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
-        sizePolicy1.setHorizontalStretch(0)
-        sizePolicy1.setVerticalStretch(0)
-        sizePolicy1.setHeightForWidth(self.label.sizePolicy().hasHeightForWidth())
-        self.label.setSizePolicy(sizePolicy1)
 
         self.verticalLayout.addWidget(self.label, 0, Qt.AlignHCenter|Qt.AlignTop)
 
         self.lineEdit = QLineEdit(Dialog)
         self.lineEdit.setObjectName(u"lineEdit")
-        sizePolicy2 = QSizePolicy(QSizePolicy.Expanding, QSizePolicy.MinimumExpanding)
-        sizePolicy2.setHorizontalStretch(0)
-        sizePolicy2.setVerticalStretch(0)
-        sizePolicy2.setHeightForWidth(self.lineEdit.sizePolicy().hasHeightForWidth())
-        self.lineEdit.setSizePolicy(sizePolicy2)
 
         self.verticalLayout.addWidget(self.lineEdit)
 
-        self.buttonBox = QDialogButtonBox(Dialog)
-        self.buttonBox.setObjectName(u"buttonBox")
-        sizePolicy1.setHeightForWidth(self.buttonBox.sizePolicy().hasHeightForWidth())
-        self.buttonBox.setSizePolicy(sizePolicy1)
-        self.buttonBox.setOrientation(Qt.Horizontal)
-        self.buttonBox.setStandardButtons(QDialogButtonBox.Cancel|QDialogButtonBox.Ok)
+        self.dialogButtonBox = QDialogButtonBox(Dialog)
+        self.dialogButtonBox.setObjectName(u"dialogButtonBox")
+        self.dialogButtonBox.setOrientation(Qt.Horizontal)
+        self.dialogButtonBox.setStandardButtons(QDialogButtonBox.Cancel|QDialogButtonBox.Ok)
 
-        self.verticalLayout.addWidget(self.buttonBox)
+        self.verticalLayout.addWidget(self.dialogButtonBox)
 
 
         self.retranslateUi(Dialog)
-        self.buttonBox.accepted.connect(Dialog.accept)
-        self.buttonBox.rejected.connect(Dialog.reject)
+        self.dialogButtonBox.accepted.connect(Dialog.accept)
+        self.dialogButtonBox.rejected.connect(Dialog.reject)
 
         QMetaObject.connectSlotsByName(Dialog)
     # setupUi
 
     def retranslateUi(self, Dialog):
-        Dialog.setWindowTitle(QCoreApplication.translate("Dialog", u"Dialog", None))
-        self.label.setText(QCoreApplication.translate("Dialog", u"TextLabel", None))
+        pass
     # retranslateUi
 
